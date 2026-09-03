@@ -28,10 +28,12 @@ func main() {
 
 	db_queries := database.New(db_connection)
 	current_state := state{&current_config, db_queries}
-	commands := commands{Commands_map: make(map[string]func(*state, command) error, 2)}
+	commands := commands{Commands_map: make(map[string]func(*state, command) error, 4)}
 
 	commands.register("login", handler_login)
 	commands.register("register", handler_register)
+	commands.register("reset", handler_reset)
+	commands.register("users", handler_users)
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command name given")
@@ -86,6 +88,29 @@ func handler_register(state_pointer *state, this_command command) error {
 	state_pointer.Config.set_user(new_user_name)
 	fmt.Printf("user created with name: %s", new_user_name)
 	log.Println(new_db_user)
+	return nil
+}
+
+func handler_reset(state_pointer *state, this_command command) error {
+	err := state_pointer.Database.ResetDatabase(context.Background())
+	if err != nil {
+		log.Fatal("Error reseting database")
+	}
+	return nil
+}
+
+func handler_users(state_pointer *state, this_command command) error {
+	all_user_names, err := state_pointer.Database.GetUsers(context.Background())
+	if err != nil {
+		log.Fatal("Couldn't get users")
+	}
+	for _, user := range all_user_names {
+		if user == state_pointer.Config.CurrentUserName {
+			fmt.Printf("%v (current)\n", user)
+		} else {
+			fmt.Println(user)
+		}
+	}
 	return nil
 }
 
