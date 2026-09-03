@@ -1,16 +1,13 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/AstorDG/Blog_Aggregator.git/internal/database"
-	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -34,6 +31,7 @@ func main() {
 	commands.register("register", handler_register)
 	commands.register("reset", handler_reset)
 	commands.register("users", handler_users)
+	commands.register("agg", handler_agg)
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command name given")
@@ -56,62 +54,6 @@ type command struct {
 type state struct {
 	Config   *config
 	Database *database.Queries
-}
-
-func handler_login(state_pointer *state, this_command command) error {
-	if len(this_command.Arguments) == 0 {
-		fmt.Println("a username is required")
-		os.Exit(1)
-	}
-	if len(this_command.Arguments) != 1 {
-		return errors.New("too many arguments")
-	}
-	this_user_name := this_command.Arguments[0]
-	_, err := state_pointer.Database.GetUserByName(context.Background(), this_user_name)
-	if err != nil {
-		log.Fatal("User doesn't exist")
-	}
-	state_pointer.Config.set_user(this_user_name)
-	fmt.Printf("user has been set to: %v", this_user_name)
-	return nil
-}
-
-func handler_register(state_pointer *state, this_command command) error {
-	if len(this_command.Arguments) != 1 {
-		log.Fatal("Incorrect number of arguments passed to register")
-	}
-	new_user_name := this_command.Arguments[0]
-	new_db_user, err := state_pointer.Database.CreateUser(context.Background(), database.CreateUserParams{ID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now(), Name: new_user_name})
-	if err != nil {
-		log.Fatal("User with that name already exists")
-	}
-	state_pointer.Config.set_user(new_user_name)
-	fmt.Printf("user created with name: %s", new_user_name)
-	log.Println(new_db_user)
-	return nil
-}
-
-func handler_reset(state_pointer *state, this_command command) error {
-	err := state_pointer.Database.ResetDatabase(context.Background())
-	if err != nil {
-		log.Fatal("Error reseting database")
-	}
-	return nil
-}
-
-func handler_users(state_pointer *state, this_command command) error {
-	all_user_names, err := state_pointer.Database.GetUsers(context.Background())
-	if err != nil {
-		log.Fatal("Couldn't get users")
-	}
-	for _, user := range all_user_names {
-		if user == state_pointer.Config.CurrentUserName {
-			fmt.Printf("%v (current)\n", user)
-		} else {
-			fmt.Println(user)
-		}
-	}
-	return nil
 }
 
 type commands struct {
