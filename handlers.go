@@ -152,3 +152,25 @@ func handler_add_feed(state_pointer *state, this_command command) error {
 	fmt.Printf("Feed fields: %v", feed_database)
 	return nil
 }
+
+func handler_feeds(state_pointer *state, this_command command) error {
+	if len(this_command.Arguments) > 0 {
+		log.Fatal("feeds takes no arguments")
+	}
+
+	feeds_from_database, err := state_pointer.Database.GetAllFeeds(context.Background())
+	if err != nil {
+		log.Fatal("Couldn't get feeds from database")
+	}
+	for _, feed := range feeds_from_database {
+		user_name, err := state_pointer.Database.GetUserNameById(context.Background(), feed.UserID)
+		if err != nil {
+			user_name = ""
+		}
+		fmt.Printf("Feed name: %s\n", feed.Name)
+		fmt.Printf("Feed url: %s\n", feed.Url)
+		fmt.Printf("Feed's User %s\n", user_name)
+	}
+
+	return nil
+}
