@@ -128,3 +128,27 @@ func fetchFeed(this_context context.Context, feed_url string) (*RSS_feed, error)
 	}
 	return &xml_data, nil
 }
+
+func handler_add_feed(state_pointer *state, this_command command) error {
+	if len(this_command.Arguments) != 2 {
+		log.Fatal("invalid number of arguments. addFeed takes 2 arguments")
+	}
+	current_user, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
+	if err != nil {
+		log.Fatal("Error getting current user. May not exist in the database")
+	}
+
+	create_feed_args := database.CreateFeedParams{
+		ID:     uuid.New(),
+		Name:   this_command.Arguments[0],
+		Url:    this_command.Arguments[1],
+		UserID: current_user.ID,
+	}
+	feed_database, err := state_pointer.Database.CreateFeed(context.Background(), create_feed_args)
+	if err != nil {
+		log.Fatal("Couldn't create a feed with that name and url")
+	}
+
+	fmt.Printf("Feed fields: %v", feed_database)
+	return nil
+}

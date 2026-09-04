@@ -32,6 +32,7 @@ func main() {
 	commands.register("reset", handler_reset)
 	commands.register("users", handler_users)
 	commands.register("agg", handler_agg)
+	commands.register("addfeed", handler_add_feed)
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command name given")
