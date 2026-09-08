@@ -129,20 +129,16 @@ func fetchFeed(this_context context.Context, feed_url string) (*RSS_feed, error)
 	return &xml_data, nil
 }
 
-func handler_add_feed(state_pointer *state, this_command command) error {
+func handler_add_feed(state_pointer *state, this_command command, this_user database.User) error {
 	if len(this_command.Arguments) != 2 {
 		log.Fatal("invalid number of arguments. addFeed takes 2 arguments")
-	}
-	current_user, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
-	if err != nil {
-		log.Fatal("Error getting current user. May not exist in the database")
 	}
 
 	create_feed_args := database.CreateFeedParams{
 		ID:     uuid.New(),
 		Name:   this_command.Arguments[0],
 		Url:    this_command.Arguments[1],
-		UserID: current_user.ID,
+		UserID: this_user.ID,
 	}
 	feed_database, err := state_pointer.Database.CreateFeed(context.Background(), create_feed_args)
 	if err != nil {
@@ -151,7 +147,7 @@ func handler_add_feed(state_pointer *state, this_command command) error {
 
 	follow_feed_params := database.FollowFeedParams{
 		ID:     uuid.New(),
-		UserID: current_user.ID,
+		UserID: this_user.ID,
 		FeedID: feed_database.ID,
 	}
 
@@ -183,15 +179,11 @@ func handler_feeds(state_pointer *state, this_command command) error {
 	return nil
 }
 
-func handler_follow(state_pointer *state, this_command command) error {
+func handler_follow(state_pointer *state, this_command command, this_user database.User) error {
 	if len(this_command.Arguments) != 1 {
 		log.Fatal("Incorrect number of arguments. follow takes one argument")
 	}
 	url := this_command.Arguments[0]
-	user, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
-	if err != nil {
-		log.Fatal("Couldn't get user id from database")
-	}
 
 	feed, err := state_pointer.Database.GetFeedByURL(context.Background(), url)
 	if err != nil {
@@ -200,29 +192,25 @@ func handler_follow(state_pointer *state, this_command command) error {
 
 	follow_feed_params := database.FollowFeedParams{
 		ID:     uuid.New(),
-		UserID: user.ID,
+		UserID: this_user.ID,
 		FeedID: feed.ID,
 	}
 	follow_feed, err := state_pointer.Database.FollowFeed(context.Background(), follow_feed_params)
 	if err != nil {
 		log.Fatal("Database error associating user with url")
 	}
+
 	fmt.Printf("Feed name: %s\n", follow_feed.FeedName)
 	fmt.Printf("User name: %s\n", follow_feed.UserName)
 	return nil
 }
 
-func handler_following(state_pointer *state, this_command command) error {
+func handler_following(state_pointer *state, this_command command, this_user database.User) error {
 	if len(this_command.Arguments) > 0 {
 		log.Fatal("Following doesn't take any arguments")
 	}
 
-	this_user_id, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
-	if err != nil {
-		log.Fatal("Current user not in database")
-	}
-
-	user_feeds, err := state_pointer.Database.GetFeedFollowsForUser(context.Background(), this_user_id.ID)
+	user_feeds, err := state_pointer.Database.GetFeedFollowsForUser(context.Background(), this_user.ID)
 	if err != nil {
 		log.Fatal("Couldn't get feed information about the current user")
 	}
@@ -230,4 +218,38 @@ func handler_following(state_pointer *state, this_command command) error {
 		fmt.Printf("Feed name: %s\n", feed.FeedsName)
 	}
 	return nil
+}
+
+func handler_unfollow(state_pointer *state, this_command command, this_user database.User) error {
+	if len(this_command.Arguments) != 1 {
+		log.Fatal("unfollow only takes a url as an argument")
+	}
+
+	feed, err := state_pointer.Database.GetFeedByURL(context.Background(), this_command.Arguments[0])
+	if err != nil {
+		log.Fatal("Feed with that url doesn't exist in the database")
+	}
+
+	unfollow_args := database.UnFollowParams{
+		UserID: this_user.ID,
+		FeedID: feed.ID,
+	}
+
+	err = state_pointer.Database.UnFollow(context.Background(), unfollow_args)
+	if err != nil {
+		log.Fatal("Error unfollowing that feed. Retry")
+	}
+
+	fmt.Printf("%s unfollowed successfully\n", feed.Name)
+	return nil
+}
+
+func check_logged_in(handler func(state_pointer *state, this_command command, this_user database.User) error) func(*state, command) error {
+	return func(state_pointer *state, this_command command) error {
+		this_user, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
+		if err != nil {
+			return err
+		}
+		return handler(state_pointer, this_command, this_user)
+	}
 }
