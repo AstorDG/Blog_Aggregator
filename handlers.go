@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AstorDG/Blog_Aggregator.git/internal/database"
@@ -73,12 +76,18 @@ func handler_users(state_pointer *state, this_command command) error {
 }
 
 func handler_agg(state_pointer *state, this_command command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		log.Fatal("Couln't get a feed from that url")
+	if len(this_command.Arguments) != 1 {
+		log.Fatal("agg takes one argument")
 	}
-	fmt.Printf("%v", feed)
-	return nil
+	frequency, err := time.ParseDuration(this_command.Arguments[0])
+	if err != nil {
+		log.Fatal("Malformed frequency argument")
+	}
+	fmt.Printf("Collecting feeds every: %s", frequency)
+	ticker := time.NewTicker(frequency)
+	for ; ; <-ticker.C {
+		scrape_feeds(state_pointer)
+	}
 }
 
 type RSS_item struct {
@@ -252,4 +261,70 @@ func check_logged_in(handler func(state_pointer *state, this_command command, th
 		}
 		return handler(state_pointer, this_command, this_user)
 	}
+}
+
+func scrape_feeds(state_pointer *state) error {
+	next_feed, err := state_pointer.Database.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = state_pointer.Database.SetLastFetchedAt(context.Background(), next_feed.ID)
+	if err != nil {
+		return err
+	}
+
+	rss_feed, err := fetchFeed(context.Background(), next_feed.Url)
+	if err != nil {
+		return err
+	}
+	for _, feed := range rss_feed.Channel.Item {
+		published_at := sql.NullTime{}
+		if tim, err := time.Parse(time.RFC1123Z, feed.PubDate); err == nil {
+			published_at = sql.NullTime{Time: tim, Valid: true}
+		}
+
+		_, err = state_pointer.Database.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			FeedID:      next_feed.ID,
+			Title:       feed.Title,
+			Description: sql.NullString{String: feed.Description, Valid: true},
+			Url:         feed.Link,
+			PublishedAt: published_at,
+		})
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				continue
+			}
+			log.Printf("Couldn't create post: %v", err)
+			continue
+		}
+	}
+	return nil
+}
+
+func handler_browse(state_pointer *state, this_command command, this_user database.User) error {
+	limit := 2
+	if len(this_command.Arguments) == 1 {
+		if specific_limit, err := strconv.Atoi(this_command.Arguments[0]); err == nil {
+			limit = specific_limit
+		} else {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+	}
+
+	posts, err := state_pointer.Database.GetPosts(context.Background(), database.GetPostsParams{UserID: this_user.ID, Limit: int32(limit)})
+	if err != nil {
+		return fmt.Errorf("Couldn't get posts for this user: %w", err)
+	}
+
+	for _, post := range posts {
+		fmt.Printf("%s from %s\n", post.PublishedAt.Time.Format("Mon Jan 2"), post.FeedName)
+		fmt.Printf("--- %s ---\n", post.Title)
+		fmt.Printf("    %v\n", post.Description.String)
+		fmt.Printf("Link: %s\n", post.Url)
+		fmt.Println("=====================================")
+	}
+	return nil
 }

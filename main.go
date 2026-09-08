@@ -37,6 +37,7 @@ func main() {
 	commands.register("follow", check_logged_in(handler_follow))
 	commands.register("following", check_logged_in(handler_following))
 	commands.register("unfollow", check_logged_in(handler_unfollow))
+	commands.register("browse", check_logged_in(handler_browse))
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command name given")
