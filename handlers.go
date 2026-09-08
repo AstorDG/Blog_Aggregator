@@ -149,6 +149,14 @@ func handler_add_feed(state_pointer *state, this_command command) error {
 		log.Fatal("Couldn't create a feed with that name and url")
 	}
 
+	follow_feed_params := database.FollowFeedParams{
+		ID:     uuid.New(),
+		UserID: current_user.ID,
+		FeedID: feed_database.ID,
+	}
+
+	state_pointer.Database.FollowFeed(context.Background(), follow_feed_params)
+
 	fmt.Printf("Feed fields: %v", feed_database)
 	return nil
 }
@@ -172,5 +180,54 @@ func handler_feeds(state_pointer *state, this_command command) error {
 		fmt.Printf("Feed's User %s\n", user_name)
 	}
 
+	return nil
+}
+
+func handler_follow(state_pointer *state, this_command command) error {
+	if len(this_command.Arguments) != 1 {
+		log.Fatal("Incorrect number of arguments. follow takes one argument")
+	}
+	url := this_command.Arguments[0]
+	user, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
+	if err != nil {
+		log.Fatal("Couldn't get user id from database")
+	}
+
+	feed, err := state_pointer.Database.GetFeedByURL(context.Background(), url)
+	if err != nil {
+		log.Fatal("Coulnd't a feed with that url")
+	}
+
+	follow_feed_params := database.FollowFeedParams{
+		ID:     uuid.New(),
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}
+	follow_feed, err := state_pointer.Database.FollowFeed(context.Background(), follow_feed_params)
+	if err != nil {
+		log.Fatal("Database error associating user with url")
+	}
+	fmt.Printf("Feed name: %s\n", follow_feed.FeedName)
+	fmt.Printf("User name: %s\n", follow_feed.UserName)
+	return nil
+}
+
+func handler_following(state_pointer *state, this_command command) error {
+	if len(this_command.Arguments) > 0 {
+		log.Fatal("Following doesn't take any arguments")
+	}
+
+	this_user_id, err := state_pointer.Database.GetUserByName(context.Background(), state_pointer.Config.CurrentUserName)
+	if err != nil {
+		log.Fatal("Current user not in database")
+	}
+
+	user_feeds, err := state_pointer.Database.GetFeedFollowsForUser(context.Background(), this_user_id.ID)
+	if err != nil {
+		log.Fatal("Couldn't get feed information about the current user")
+	}
+	for _, feed := range user_feeds {
+		fmt.Printf("Feed name: %s\n", feed.FeedsName)
+	}
 	return nil
 }
